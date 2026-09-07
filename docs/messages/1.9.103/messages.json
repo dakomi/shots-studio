@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "show": true,
+      "id": "welcome_1_9_103_gemma4",
+      "title": "Gemma 4 support is here in 1.9.103 🚀",
+      "message": "Shots Studio now supports Gemma 4 `.litertlm` models for on-device AI.\\n\\nWhat's new:\\n• Download the recommended Gemma 4 E2B model directly from AI Settings\\n• Sideload `.litertlm`, `.task`, and `.bin` models manually\\n• Keep screenshot analysis fully on-device with lower storage needs than the previous recommended model\\n\\nWith love,\\nTeam Shots Studio",
+      "type": "info",
+      "priority": "high",
+      "show_once": true,
+      "valid_until": "2027-03-01T00:00:00Z",
+      "is_notification": false,
+      "version": "1.9.103",
+      "beta_only": false,
+      "platform": "all"
+    }
+  ]
+}
