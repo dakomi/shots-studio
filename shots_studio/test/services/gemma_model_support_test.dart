@@ -1,6 +1,7 @@
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shots_studio/services/gemma_model_support.dart';
+import 'package:shots_studio/services/gemma_service.dart';
 
 void main() {
   group('GemmaModelSupport', () {
@@ -41,6 +42,19 @@ void main() {
         isTrue,
       );
       expect(GemmaModelSupport.isSupportedModelFile('/tmp/model.exe'), isFalse);
+    });
+
+    test('builds LiteRT-LM runtime options for Gemma 4 models', () {
+      final options = GemmaService().buildRuntimeOptions(
+        modelFilePath: '/tmp/gemma-4-E2B-it.litertlm',
+        useCPU: true,
+      );
+
+      expect(options.modelType, ModelType.gemma4);
+      expect(options.fileType, ModelFileType.litertlm);
+      expect(options.preferredBackend, PreferredBackend.cpu);
+      expect(options.supportImage, isTrue);
+      expect(options.maxNumImages, 1);
     });
   });
 }

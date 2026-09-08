@@ -8,6 +8,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:shots_studio/services/logger_service.dart';
 
+class GemmaRuntimeOptions {
+  final ModelType modelType;
+  final ModelFileType fileType;
+  final PreferredBackend preferredBackend;
+  final int maxTokens;
+  final bool supportImage;
+  final int maxNumImages;
+
+  const GemmaRuntimeOptions({
+    required this.modelType,
+    required this.fileType,
+    required this.preferredBackend,
+    this.maxTokens = 2048,
+    this.supportImage = true,
+    this.maxNumImages = 1,
+  });
+}
+
 class GemmaService {
   static GemmaService? _instance;
   GemmaService._internal();
@@ -43,6 +61,18 @@ class GemmaService {
       _isFlutterGemmaInitialized = true;
     }
     _gemma = FlutterGemmaPlugin.instance;
+  }
+
+  GemmaRuntimeOptions buildRuntimeOptions({
+    required String modelFilePath,
+    required bool useCPU,
+  }) {
+    final modelConfig = GemmaModelSupport.resolve(modelFilePath);
+    return GemmaRuntimeOptions(
+      modelType: modelConfig.modelType,
+      fileType: modelConfig.fileType,
+      preferredBackend: useCPU ? PreferredBackend.cpu : PreferredBackend.gpu,
+    );
   }
 
   // Load model from file path
@@ -90,14 +120,19 @@ class GemmaService {
       // Get CPU/GPU preference from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final useCPU = prefs.getBool('gemma_use_cpu') ?? true; // CPU by default
+      final runtimeOptions = buildRuntimeOptions(
+        modelFilePath: modelFilePath,
+        useCPU: useCPU,
+      );
 
       // Create inference model with conservative settings to reduce memory usage
       _inferenceModel = await _gemma!.createModel(
-        modelType: modelConfig.modelType,
-        preferredBackend: useCPU ? PreferredBackend.cpu : PreferredBackend.gpu,
-        maxTokens: 2048, // Reduced from 4096 to save memory
-        supportImage: true, // Enable multimodal support
-        maxNumImages: 1,
+        modelType: runtimeOptions.modelType,
+        fileType: runtimeOptions.fileType,
+        preferredBackend: runtimeOptions.preferredBackend,
+        maxTokens: runtimeOptions.maxTokens,
+        supportImage: runtimeOptions.supportImage,
+        maxNumImages: runtimeOptions.maxNumImages,
       );
 
       _isModelLoaded = true;
