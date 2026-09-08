@@ -5,7 +5,26 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'package:flutter_gemma/core/api/flutter_gemma.dart' as gemma_api;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:shots_studio/services/logger_service.dart';
+
+class GemmaRuntimeOptions {
+  final ModelType modelType;
+  final ModelFileType fileType;
+  final PreferredBackend preferredBackend;
+  final int maxTokens;
+  final bool supportImage;
+  final int maxNumImages;
+
+  const GemmaRuntimeOptions({
+    required this.modelType,
+    required this.fileType,
+    required this.preferredBackend,
+    this.maxTokens = 2048,
+    this.supportImage = true,
+    this.maxNumImages = 1,
+  });
+}
 
 class GemmaService {
   static GemmaService? _instance;
@@ -27,6 +46,7 @@ class GemmaService {
   bool _isLoading = false;
   bool _isGenerating = false;
   String? _currentModelPath;
+  String? _lastLoadError;
   int _generationCount = 0;
   int? _lastProcessingTimeMs; // Track last processing time for analytics
   static const int _maxGenerationsBeforeCleanup = 2;
@@ -43,6 +63,18 @@ class GemmaService {
     _gemma = FlutterGemmaPlugin.instance;
   }
 
+  GemmaRuntimeOptions buildRuntimeOptions({
+    required String modelFilePath,
+    required bool useCPU,
+  }) {
+    final modelConfig = GemmaModelSupport.resolve(modelFilePath);
+    return GemmaRuntimeOptions(
+      modelType: modelConfig.modelType,
+      fileType: modelConfig.fileType,
+      preferredBackend: useCPU ? PreferredBackend.cpu : PreferredBackend.gpu,
+    );
+  }
+
   // Load model from file path
   Future<bool> loadModel(String modelFilePath) async {
     if (_gemma == null) {
@@ -50,6 +82,7 @@ class GemmaService {
     }
 
     _isLoading = true;
+    _lastLoadError = null;
 
     try {
       // Verify file exists
@@ -62,34 +95,49 @@ class GemmaService {
       await _cleanupExistingModel();
 
       // Install the model using the new FileSource API (references file without copying)
-      final modelFileName = modelFilePath.split('/').last;
+      final modelConfig = GemmaModelSupport.resolve(modelFilePath);
       await gemma_api.FlutterGemma.installModel(
-        modelType: ModelType.gemmaIt,
+        modelType: modelConfig.modelType,
+        fileType: modelConfig.fileType,
       ).fromFile(modelFilePath).install();
 
-      // Verify the model is properly installed
-      final isInstalled = await gemma_api.FlutterGemma.isModelInstalled(
-        modelFileName,
-      );
-      if (!isInstalled) {
-        throw Exception('Model not properly installed at path: $modelFilePath');
+      // LiteRT-LM installs can report false here while still being loadable.
+      // Treat this only as diagnostic information and rely on createModel()
+      // to confirm whether inference can actually start.
+      try {
+        final isInstalled = await gemma_api.FlutterGemma.isModelInstalled(
+          modelConfig.fileName,
+        );
+        if (!isInstalled) {
+          LoggerService.log(
+            'Gemma model install verification returned false for ${modelConfig.fileName}; continuing to model creation.',
+          );
+        }
+      } catch (e) {
+        LoggerService.error('Error verifying Gemma model installation', e);
       }
 
       // Get CPU/GPU preference from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final useCPU = prefs.getBool('gemma_use_cpu') ?? true; // CPU by default
+      final runtimeOptions = buildRuntimeOptions(
+        modelFilePath: modelFilePath,
+        useCPU: useCPU,
+      );
 
       // Create inference model with conservative settings to reduce memory usage
       _inferenceModel = await _gemma!.createModel(
-        modelType: ModelType.gemmaIt,
-        preferredBackend: useCPU ? PreferredBackend.cpu : PreferredBackend.gpu,
-        maxTokens: 2048, // Reduced from 4096 to save memory
-        supportImage: true, // Enable multimodal support
-        maxNumImages: 1,
+        modelType: runtimeOptions.modelType,
+        fileType: runtimeOptions.fileType,
+        preferredBackend: runtimeOptions.preferredBackend,
+        maxTokens: runtimeOptions.maxTokens,
+        supportImage: runtimeOptions.supportImage,
+        maxNumImages: runtimeOptions.maxNumImages,
       );
 
       _isModelLoaded = true;
       _currentModelPath = modelFilePath;
+      _lastLoadError = null;
 
       // Save the model path and loaded state to preferences
       await _saveModelPath(modelFilePath);
@@ -102,7 +150,9 @@ class GemmaService {
     } catch (e) {
       _isModelLoaded = false;
       _currentModelPath = null;
+      _lastLoadError = e.toString();
       await _saveModelLoadedState(false);
+      LoggerService.error('Error loading Gemma model', e);
       rethrow;
     } finally {
       _isLoading = false;
@@ -137,6 +187,7 @@ class GemmaService {
   // Check if model is ready and load from preferences if needed
   Future<bool> ensureModelReady() async {
     if (_isModelLoaded && _inferenceModel != null) {
+      _lastLoadError = null;
       return true;
     }
 
@@ -160,15 +211,20 @@ class GemmaService {
           return await loadModel(savedModelPath);
         } else {
           LoggerService.log('Saved model path does not exist: $savedModelPath');
+          _lastLoadError =
+              'Saved Gemma model file was not found. Please select or download the model again.';
           // Clean up invalid path
           await _removeModelPath();
           await _saveModelLoadedState(false);
         }
       } else {
         LoggerService.log('No model path found in preferences');
+        _lastLoadError =
+            'No Gemma model file is configured. Please select or download a model in AI Settings.';
       }
     } catch (e) {
       LoggerService.error('Error loading model from preferences', e);
+      _lastLoadError = e.toString();
       await _saveModelLoadedState(false);
     }
     LoggerService.log('No valid model found in preferences.');
@@ -532,6 +588,7 @@ class GemmaService {
     _isLoading = false;
     _isGenerating = false;
     _currentModelPath = null;
+    _lastLoadError = null;
     _generationCount = 0;
     _lastProcessingTimeMs = null; // Reset processing time
 
@@ -544,5 +601,6 @@ class GemmaService {
   bool get isLoading => _isLoading;
   bool get isGenerating => _isGenerating;
   String? get currentModelPath => _currentModelPath;
+  String? get lastLoadError => _lastLoadError;
   int? get lastProcessingTimeMs => _lastProcessingTimeMs;
 }

@@ -52,6 +52,7 @@ class ScreenshotAnalysisService extends AIService {
       'totalCount': screenshots.length,
       'cancelled': false,
     };
+    String? firstBatchError;
 
     // Process in batches
     for (int i = 0; i < screenshots.length; i += config.maxParallel) {
@@ -105,13 +106,34 @@ class ScreenshotAnalysisService extends AIService {
         });
 
         if (result.containsKey('error')) {
+          firstBatchError ??= result['error']?.toString();
           onBatchProcessed(batch, result);
         } else {
           // Try to parse and update screenshots
           try {
-            parseAndUpdateScreenshots(unprocessedBatch, result);
+            final updatedScreenshots = parseAndUpdateScreenshots(
+              unprocessedBatch,
+              result,
+            );
+            if (updatedScreenshots.isEmpty) {
+              final parsingError =
+                  'AI response could not be applied to this batch.';
+              firstBatchError ??= parsingError;
+              final errorResult = {
+                'error': parsingError,
+                'statusCode': 422,
+                'parsing_error': true,
+              };
+              (finalResults['batchResults'] as List).add({
+                'batch': batch.map((s) => s.id).toList(),
+                'result': errorResult,
+              });
+              onBatchProcessed(batch, errorResult);
+              break;
+            }
             finalResults['processedCount'] =
-                (finalResults['processedCount'] as int) + batch.length;
+                (finalResults['processedCount'] as int) +
+                updatedScreenshots.length;
 
             // Log analytics for Gemma processing if this is a Gemma model
             await _logGemmaAnalyticsIfApplicable(
@@ -124,6 +146,7 @@ class ScreenshotAnalysisService extends AIService {
           } catch (parseError) {
             // Handle parsing errors by stopping processing and showing error
             LoggerService.error("Parsing error occurred", parseError);
+            firstBatchError ??= parseError.toString();
             final errorResult = {
               'error': parseError.toString(),
               'statusCode': 422, // Unprocessable Entity
@@ -141,6 +164,7 @@ class ScreenshotAnalysisService extends AIService {
 
         await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
+        firstBatchError ??= e.toString();
         (finalResults['batchResults'] as List).add({
           'batch': batch.map((s) => s.id).toList(),
           'error': e.toString(),
@@ -151,6 +175,10 @@ class ScreenshotAnalysisService extends AIService {
 
     if (isCancelled) {
       return AIResult.cancelled();
+    }
+
+    if ((finalResults['processedCount'] as int) == 0 && firstBatchError != null) {
+      return AIResult.error(firstBatchError!, statusCode: 422);
     }
 
     return AIResult.success(finalResults);
@@ -165,7 +193,7 @@ class ScreenshotAnalysisService extends AIService {
       if (!_processingTerminated) {
         _handleResponseError(response);
       }
-      return screenshots;
+      return [];
     }
 
     try {
@@ -246,7 +274,7 @@ class ScreenshotAnalysisService extends AIService {
       );
     } catch (e) {
       LoggerService.error('Error parsing response and updating screenshots', e);
-      return screenshots;
+      return [];
     }
   }
 
@@ -704,8 +732,6 @@ class ScreenshotAnalysisService extends AIService {
         if (matchedAiItemIndex != null) {
           availableResponses.removeAt(matchedAiItemIndex);
         }
-      } else {
-        updatedScreenshots.add(screenshot);
       }
     }
 

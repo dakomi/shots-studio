@@ -333,9 +333,11 @@ class GemmaAPIProvider implements APIProvider {
       // Ensure Gemma model is ready
       final isReady = await _gemmaService.ensureModelReady();
       if (!isReady) {
+        final loadError = _gemmaService.lastLoadError;
         return {
-          'error':
-              'Gemma model not loaded. Please select a model file in AI Settings.',
+          'error': loadError?.isNotEmpty == true
+              ? 'Gemma model could not be loaded: $loadError'
+              : 'Gemma model not loaded. Please select a model file in AI Settings.',
           'statusCode': 400,
         };
       }

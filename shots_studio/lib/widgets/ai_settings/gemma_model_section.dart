@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shots_studio/services/snackbar_service.dart';
 import 'package:shots_studio/services/gemma_download_service.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Section for managing local Gemma model files.
@@ -63,7 +64,7 @@ class GemmaModelSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Download or select a local Gemma model file (.bin or .task) to use for on-device AI processing. Downloaded models are saved to the app\'s private storage.',
+              'Download or select a local Gemma model file (.litertlm, .task, or .bin) to use for on-device AI processing. Downloaded models are saved to the app\'s private storage.',
               style: TextStyle(
                 fontSize: 12,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -123,7 +124,7 @@ class GemmaModelSection extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Recommended: Gemma 3N E2B IT INT4 (~3.1GB)',
+            'Recommended: ${GemmaModelSupport.recommendedModelLabel} (${GemmaModelSupport.recommendedModelSize})',
             style: TextStyle(
               fontSize: 11,
               color: theme.colorScheme.onSurfaceVariant,
@@ -146,7 +147,7 @@ class GemmaModelSection extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onDownloadModel,
                 icon: const Icon(Icons.cloud_download),
-                label: const Text('Download Gemma Model'),
+                label: const Text('Download Gemma 4 Model'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: theme.colorScheme.onPrimary,
@@ -276,8 +277,7 @@ class GemmaModelSection extends StatelessWidget {
   Widget _buildManualDownloadLink(BuildContext context, ThemeData theme) {
     return InkWell(
       onTap: () async {
-        const url =
-            'https://www.kaggle.com/models/google/gemma-3n/tfLite/gemma-3n-e2b-it-int4';
+        const url = GemmaModelSupport.manualDownloadUrl;
         try {
           final uri = Uri.parse(url);
           if (await canLaunchUrl(uri)) {
@@ -318,7 +318,7 @@ class GemmaModelSection extends StatelessWidget {
             const SizedBox(width: 4),
             Expanded(
               child: Text(
-                'Or download manually from Kaggle',
+                'Or download manually from Hugging Face',
                 style: TextStyle(
                   fontSize: 10,
                   color: theme.colorScheme.onSurfaceVariant,

@@ -628,9 +628,38 @@ class BackgroundProcessingService {
               return;
             }
 
+            if (response.containsKey('error') || !response.containsKey('data')) {
+              LoggerService.log(
+                'Background service: batch failed and will not be counted as processed: ${response['error']}',
+              );
+              service.invoke(CHANNEL_BATCH_UPDATE, {
+                'updatedScreenshots': jsonEncode([]),
+                'response': jsonEncode(response),
+                'processedCount': processedCount,
+                'totalCount': totalCount,
+              });
+              return;
+            }
+
             // Process batch results normally
             final updatedScreenshots = analysisService
                 .parseAndUpdateScreenshots(batch, response);
+
+            if (updatedScreenshots.isEmpty) {
+              final parseFailureResponse = {
+                'error': 'AI response could not be applied to this batch.',
+                'statusCode': 422,
+                'parsing_error': true,
+              };
+              service.invoke(CHANNEL_BATCH_UPDATE, {
+                'updatedScreenshots': jsonEncode([]),
+                'response': jsonEncode(parseFailureResponse),
+                'processedCount': processedCount,
+                'totalCount': totalCount,
+              });
+              return;
+            }
+
             processedCount += updatedScreenshots.length;
 
             // Update foreground notification with progress

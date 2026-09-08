@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shots_studio/l10n/app_localizations.dart';
 import 'package:shots_studio/services/gemma_download_service.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
+import 'package:shots_studio/services/gemma_service.dart';
 import 'package:shots_studio/widgets/ai_settings/index.dart';
 import 'dart:io';
 import 'package:shots_studio/services/logger_service.dart';
@@ -32,6 +34,7 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
   late String _selectedModelName;
   String? _gemmaModelPath;
   bool _isLoadingGemmaModel = false;
+  bool _isActivatingGemmaModel = false;
   bool _gemmaUseCPU = true; // CPU by default
 
   final GemmaDownloadService _downloadService = GemmaDownloadService();
@@ -63,14 +66,19 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
     if (mounted) {
       setState(() {
         // Update UI when download progress changes
-        if (_downloadService.isCompleted &&
-            _downloadService.progress.filePath != null) {
-          _gemmaModelPath = _downloadService.progress.filePath;
-          _providerStates['gemma'] = true;
-          // Save provider setting
-          _saveProviderSetting('gemma', true);
-        }
       });
+    }
+
+    final downloadedPath = _downloadService.progress.filePath;
+    if (_downloadService.isCompleted &&
+        downloadedPath != null &&
+        downloadedPath.isNotEmpty &&
+        !_isActivatingGemmaModel &&
+        downloadedPath != _gemmaModelPath) {
+      _activateGemmaModel(
+        downloadedPath,
+        successMessage: 'Gemma model downloaded and loaded successfully',
+      );
     }
   }
 
@@ -110,7 +118,7 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['bin', 'gguf', 'task'],
+        allowedExtensions: GemmaModelSupport.supportedFileExtensions,
         dialogTitle: 'Select Gemma Model File',
       );
 
@@ -121,6 +129,12 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
         }
 
         final sourceFile = File(sourcePath);
+
+        if (!GemmaModelSupport.isSupportedModelFile(sourcePath)) {
+          throw Exception(
+            'Unsupported model format. Please select a .litertlm, .task, .bin, or .gguf file.',
+          );
+        }
 
         if (await sourceFile.exists()) {
           // Copy the file to app's documents directory to ensure persistence
@@ -141,23 +155,10 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
 
           // Verify the copied file exists
           if (await destinationFile.exists()) {
-            // Save the permanent model path
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('gemma_model_path', destinationFile.path);
-
-            setState(() {
-              _gemmaModelPath = destinationFile.path;
-            });
-
-            // Track analytics
-            AnalyticsService().logFeatureUsed('gemma_model_file_selected');
-
-            if (mounted) {
-              SnackbarService().showSuccess(
-                context,
-                'Gemma model file copied: $originalFileName',
-              );
-            }
+            await _activateGemmaModel(
+              destinationFile.path,
+              successMessage: 'Gemma model file loaded: $originalFileName',
+            );
           } else {
             throw Exception('Failed to copy model file to permanent location');
           }
@@ -173,6 +174,74 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
       setState(() {
         _isLoadingGemmaModel = false;
       });
+    }
+  }
+
+  Future<void> _activateGemmaModel(
+    String modelPath, {
+    String? successMessage,
+  }) async {
+    if (_isActivatingGemmaModel) {
+      return;
+    }
+
+    _isActivatingGemmaModel = true;
+
+    try {
+      if (mounted) {
+        setState(() {
+          _isLoadingGemmaModel = true;
+        });
+      }
+
+      await GemmaService().loadModel(modelPath);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('gemma_model_path', modelPath);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _gemmaModelPath = modelPath;
+        _providerStates['gemma'] = true;
+      });
+
+      await _saveProviderSetting('gemma', true);
+      AnalyticsService().logFeatureUsed('gemma_model_file_selected');
+
+      if (successMessage != null) {
+        SnackbarService().showSuccess(context, successMessage);
+      }
+    } catch (e) {
+      LoggerService.error('Failed to activate Gemma model', e);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('gemma_model_path');
+      await _saveProviderSetting('gemma', false);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _gemmaModelPath = null;
+        _providerStates['gemma'] = false;
+      });
+
+      SnackbarService().showError(
+        context,
+        'Gemma model could not be loaded: $e',
+      );
+    } finally {
+      _isActivatingGemmaModel = false;
+
+      if (mounted) {
+        setState(() {
+          _isLoadingGemmaModel = false;
+        });
+      }
     }
   }
 
@@ -432,6 +501,11 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
 
     final success = await _downloadService.startDownload(downloadLocation);
 
+    if (success && _downloadService.progress.filePath != null) {
+      await _activateGemmaModel(_downloadService.progress.filePath!);
+      return;
+    }
+
     if (!success && mounted) {
       SnackbarService().showError(
         context,
@@ -529,11 +603,14 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
     );
 
     if (confirmed == true) {
-      setState(() {
-        _providerStates[provider] = true;
-      });
-
-      await _saveProviderSetting(provider, true);
+      if (_gemmaModelPath != null && _gemmaModelPath!.isNotEmpty) {
+        await _activateGemmaModel(_gemmaModelPath!);
+      } else {
+        setState(() {
+          _providerStates[provider] = true;
+        });
+        await _saveProviderSetting(provider, true);
+      }
 
       AnalyticsService().logFeatureUsed(
         'ai_provider_${provider}_enabled_with_warning',
@@ -823,6 +900,14 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
                   _gemmaUseCPU = useCPU;
                 });
                 _saveGemmaCpuGpuSetting(useCPU);
+                final modelPath = _gemmaModelPath;
+                if (modelPath != null && modelPath.isNotEmpty) {
+                  _activateGemmaModel(
+                    modelPath,
+                    successMessage:
+                        'Gemma model reloaded with ${useCPU ? "CPU" : "GPU"} processing',
+                  );
+                }
               },
             ),
 
