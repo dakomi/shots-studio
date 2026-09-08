@@ -166,74 +166,6 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
           throw Exception('Selected file does not exist');
         }
       }
-
-      Future<void> _activateGemmaModel(
-        String modelPath, {
-        String? successMessage,
-      }) async {
-        if (_isActivatingGemmaModel) {
-          return;
-        }
-
-        _isActivatingGemmaModel = true;
-
-        try {
-          if (mounted) {
-            setState(() {
-              _isLoadingGemmaModel = true;
-            });
-          }
-
-          await GemmaService().loadModel(modelPath);
-
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('gemma_model_path', modelPath);
-
-          if (!mounted) {
-            return;
-          }
-
-          setState(() {
-            _gemmaModelPath = modelPath;
-            _providerStates['gemma'] = true;
-          });
-
-          await _saveProviderSetting('gemma', true);
-          AnalyticsService().logFeatureUsed('gemma_model_file_selected');
-
-          if (successMessage != null) {
-            SnackbarService().showSuccess(context, successMessage);
-          }
-        } catch (e) {
-          LoggerService.error('Failed to activate Gemma model', e);
-
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('gemma_model_path');
-          await _saveProviderSetting('gemma', false);
-
-          if (!mounted) {
-            return;
-          }
-
-          setState(() {
-            _gemmaModelPath = null;
-            _providerStates['gemma'] = false;
-          });
-
-          SnackbarService().showError(
-            context,
-            'Gemma model could not be loaded: $e',
-          );
-        } finally {
-          _isActivatingGemmaModel = false;
-
-          if (mounted) {
-            setState(() {
-              _isLoadingGemmaModel = false;
-            });
-          }
-        }
-      }
     } catch (e) {
       if (mounted) {
         SnackbarService().showError(context, 'Error selecting model file: $e');
@@ -242,6 +174,74 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
       setState(() {
         _isLoadingGemmaModel = false;
       });
+    }
+  }
+
+  Future<void> _activateGemmaModel(
+    String modelPath, {
+    String? successMessage,
+  }) async {
+    if (_isActivatingGemmaModel) {
+      return;
+    }
+
+    _isActivatingGemmaModel = true;
+
+    try {
+      if (mounted) {
+        setState(() {
+          _isLoadingGemmaModel = true;
+        });
+      }
+
+      await GemmaService().loadModel(modelPath);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('gemma_model_path', modelPath);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _gemmaModelPath = modelPath;
+        _providerStates['gemma'] = true;
+      });
+
+      await _saveProviderSetting('gemma', true);
+      AnalyticsService().logFeatureUsed('gemma_model_file_selected');
+
+      if (successMessage != null) {
+        SnackbarService().showSuccess(context, successMessage);
+      }
+    } catch (e) {
+      LoggerService.error('Failed to activate Gemma model', e);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('gemma_model_path');
+      await _saveProviderSetting('gemma', false);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _gemmaModelPath = null;
+        _providerStates['gemma'] = false;
+      });
+
+      SnackbarService().showError(
+        context,
+        'Gemma model could not be loaded: $e',
+      );
+    } finally {
+      _isActivatingGemmaModel = false;
+
+      if (mounted) {
+        setState(() {
+          _isLoadingGemmaModel = false;
+        });
+      }
     }
   }
 
