@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shots_studio/l10n/app_localizations.dart';
 import 'package:shots_studio/services/gemma_download_service.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:shots_studio/widgets/ai_settings/index.dart';
 import 'dart:io';
 import 'package:shots_studio/services/logger_service.dart';
@@ -110,17 +111,24 @@ class _AISettingsScreenState extends State<AISettingsScreen> {
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['bin', 'gguf', 'task'],
+        allowedExtensions: GemmaModelSupport.supportedFileExtensions,
         dialogTitle: 'Select Gemma Model File',
       );
 
       if (result != null && result.files.single.path != null) {
         final sourcePath = result.files.single.path;
+        final selectedFileName = result.files.single.name;
         if (sourcePath == null) {
           throw Exception('Selected file path is null');
         }
 
         final sourceFile = File(sourcePath);
+
+        if (!GemmaModelSupport.isSupportedModelFile(selectedFileName)) {
+          throw Exception(
+            'Unsupported model format for "$selectedFileName". Please select a .litertlm, .task, .bin, or .gguf file.',
+          );
+        }
 
         if (await sourceFile.exists()) {
           // Copy the file to app's documents directory to ensure persistence

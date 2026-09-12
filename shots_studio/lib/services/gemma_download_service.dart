@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shots_studio/services/analytics/analytics_service.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 enum DownloadStatus { idle, downloading, paused, completed, error, cancelled }
@@ -49,9 +50,8 @@ class GemmaDownloadService extends ChangeNotifier {
   factory GemmaDownloadService() => _instance;
   GemmaDownloadService._internal();
 
-  static const String _modelUrl =
-      'https://huggingface.co/AnsahMohammad/gemma-shots-studio/resolve/main/gemma-3n-E2B-it-int4.task?download=true';
-  static const String _fileName = 'gemma-3n-E2B-it-int4.task';
+  static const String _modelUrl = GemmaModelSupport.recommendedModel.downloadUrl;
+  static const String _fileName = GemmaModelSupport.recommendedModel.fileName;
 
   // Notification constants
   static const String _notificationChannelId = 'gemma_download_channel';

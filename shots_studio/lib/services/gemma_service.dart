@@ -5,6 +5,7 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'package:flutter_gemma/core/api/flutter_gemma.dart' as gemma_api;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shots_studio/services/gemma_model_support.dart';
 import 'package:shots_studio/services/logger_service.dart';
 
 class GemmaService {
@@ -62,17 +63,20 @@ class GemmaService {
       await _cleanupExistingModel();
 
       // Install the model using the new FileSource API (references file without copying)
-      final modelFileName = modelFilePath.split('/').last;
+      final modelConfig = GemmaModelSupport.resolve(modelFilePath);
       await gemma_api.FlutterGemma.installModel(
-        modelType: ModelType.gemmaIt,
+        modelType: modelConfig.modelType,
+        fileType: modelConfig.fileType,
       ).fromFile(modelFilePath).install();
 
-      // Verify the model is properly installed
-      final isInstalled = await gemma_api.FlutterGemma.isModelInstalled(
-        modelFileName,
-      );
-      if (!isInstalled) {
-        throw Exception('Model not properly installed at path: $modelFilePath');
+      if (modelConfig.fileType != ModelFileType.litertlm ||
+          modelConfig.modelType != ModelType.gemma4) {
+        final isInstalled = await gemma_api.FlutterGemma.isModelInstalled(
+          modelConfig.fileName,
+        );
+        if (!isInstalled) {
+          throw Exception('Model not properly installed at path: $modelFilePath');
+        }
       }
 
       // Get CPU/GPU preference from SharedPreferences
@@ -81,7 +85,8 @@ class GemmaService {
 
       // Create inference model with conservative settings to reduce memory usage
       _inferenceModel = await _gemma!.createModel(
-        modelType: ModelType.gemmaIt,
+        modelType: modelConfig.modelType,
+        fileType: modelConfig.fileType,
         preferredBackend: useCPU ? PreferredBackend.cpu : PreferredBackend.gpu,
         maxTokens: 2048, // Reduced from 4096 to save memory
         supportImage: true, // Enable multimodal support

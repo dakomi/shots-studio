@@ -922,7 +922,7 @@ class _AISetupOnboardingScreenState extends State<AISetupOnboardingScreen> {
         ];
         cons = [
           'Slower processing than cloud AI',
-          'Requires ~3GB storage for model',
+          'Requires ~2.4GB storage for the recommended Gemma 4 model',
           'May be slow on older devices',
           'Need to download model first',
         ];
@@ -1200,7 +1200,7 @@ class _AISetupOnboardingScreenState extends State<AISetupOnboardingScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Download the Gemma model to process screenshots entirely on your device',
+            'Download the recommended Gemma 4 model to process screenshots entirely on your device',
             style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 32),
@@ -1233,7 +1233,7 @@ class _AISetupOnboardingScreenState extends State<AISetupOnboardingScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'The Gemma AI model (~3GB) needs to be downloaded before you can use on-device processing.',
+                  'The recommended Gemma 4 AI model (~2.4GB) needs to be downloaded before you can use on-device processing.',
                   style: TextStyle(
                     color: theme.colorScheme.onSecondaryContainer,
                     height: 1.5,
